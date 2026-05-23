@@ -1,0 +1,42 @@
+#pragma once
+
+#include <QMainWindow>
+#include <qcustomplot.h>
+#include <fftw3.h>
+#include <unistd.h>
+
+namespace Ui
+{
+    class MainWindow;
+}
+
+class MainWindow : public QMainWindow
+{
+    Q_OBJECT
+
+    public:
+        explicit MainWindow(QWidget *parent = 0);
+        ~MainWindow();
+        int A, f, n1, fd, n2,df, rate, k_rate, meandr, N;
+        double Xt, Re, Im;
+        int perek;
+        FILE* fileoutcarrier;
+        FILE* fileoutfsk;
+        FILE* fileout8psk;
+        QString os;
+
+// int rnd[n];
+
+    private slots:
+        void on_pbtime_clicked();
+        void on_pbspectrum_clicked();
+        void on_pbclose_clicked();
+        void on_pbwritefile_clicked();
+        void on_pbclean_clicked();
+        void on_pbremovefile_clicked();
+        void sanitizeParams();
+
+    private:
+        Ui::MainWindow *ui;
+        QString file_name;
+};
