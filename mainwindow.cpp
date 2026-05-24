@@ -16,8 +16,13 @@ const QString X_AXIS_TIME_LABEL = "Real is blue, Imaginary is red";
 const QString X_AXIS_SPECTRUM_LABEL = "Spectrum line";
 const QString Y_AXIS_LABEL = "A";
 
-const char *RESULT0_FILE_PATH = "resultcarrier.dat";
-const char *RESULT1_FILE_PATH = "resultfsk.dat";
+const char *CARRIER_MODE_RESULT_FILE_PATH = "resultcarrier.dat";
+const char *FREQUENCY_MODE_RESULT_FILE_PATH = "resultfsk.dat";
+const char *PHASE_MODE_RESULT_FILE_PATH = "result8psk.dat";
+
+const int CARRIER_MODE = 0;
+const int FREQUENCY_MODE = 1;
+const int PHASE_MODE = 2;
 
 const double PI = acos(-1.0);
 
@@ -43,7 +48,7 @@ void MainWindow::on_pbtime_clicked()
     /* my diff: updated debug message */
     qDebug() << "Plotting a graph" << Qt::endl;
 
-    /* me diff: now params is a struct! */
+    /* my diff: now params is a struct! */
     params.loadFromSettings();
     params.sanitize();
 
@@ -141,7 +146,7 @@ void MainWindow::on_pbspectrum_clicked()
 
     /* my diff: magic string was replaced with const */
     ui -> widget -> xAxis -> setLabel(X_AXIS_SPECTRUM_LABEL);
-    ui -> widget -> xAxis -> setRange(-params.fd/2, params.fd/2);
+    ui -> widget -> xAxis -> setRange(-params.fd / 2, params.fd / 2);
     ui -> widget -> xAxis -> grid() -> setVisible(true);
 
     ui -> widget -> yAxis -> setLabel(Y_AXIS_LABEL);
@@ -163,30 +168,20 @@ void MainWindow::on_pbwritefile_clicked()
 {
     qDebug() << "Writing file" << Qt::endl;
 
-    int i = 0;
-    int rnd = 0;
-    int k = 0;
-    short result[2]; /* idk why there is short. probably the other program needs it. */
+    short result[2]; /* idk why there is "short". probably the other program needs it. */
     /* i think we can do conditional compilation, but should we? */
-
-    /* my diff: now using a dynamic array, `cause the size is unknown while compile */
-    size_t size = params.N + 10;
-    short *inf_bit = new short[size];
-
-    /* my diff: i guess it must shows the size of the inf_bit array, so */
-    qDebug() << "Size is " << size << Qt::endl;
 
     ui -> progressBar -> setMaximum(params.n2);
     ui -> progressBar -> setMinimum(params.n1);
     mode = ui -> comboBox -> currentIndex();
 
-    switch(mode) {
-        case 0: {
+    switch (mode) {
+        case CARRIER_MODE: {
             /* my diff: updated magic string */
-            fileoutcarrier = fopen(RESULT0_FILE_PATH, "w+b");
+            fileoutcarrier = fopen(CARRIER_MODE_RESULT_FILE_PATH, "w+b");
 
             /* my diff: normal debug! */
-            if (fileoutcarrier == NULL){
+            if (fileoutcarrier == NULL) {
                 qDebug() << "Error during opening file";
                 return;
             }
@@ -197,9 +192,13 @@ void MainWindow::on_pbwritefile_clicked()
             for (int i = params.n1; i <= params.n2; ++i) {
                 Re = params.A * (cos(2 * PI * params.f * i / params.fd));
                 Im = params.A * (sin(2 * PI * params.f * i / params.fd));
+
                 result[0] = Re;
                 result[1] = Im;
+
                 fwrite(result, sizeof(short), 2, fileoutcarrier);
+
+                /* should be updated */
                 ui -> progressBar -> setValue(i);
             }
 
@@ -207,10 +206,12 @@ void MainWindow::on_pbwritefile_clicked()
             break;
         }
 
-        case 1: {
-            fileoutfsk = fopen(RESULT1_FILE_PATH,"w+b");
+        case FREQUENCY_MODE: {
+            /* my diff: maggicc striingg */
+            fileoutfsk = fopen(FREQUENCY_MODE_RESULT_FILE_PATH, "w+b");
 
-            if (fileoutfsk == NULL){
+            /* my diff: normal debug again */
+            if (fileoutfsk == NULL) {
                 qDebug() << "Error during opening file";
                 return;
             }
@@ -218,121 +219,132 @@ void MainWindow::on_pbwritefile_clicked()
                 qDebug() << "File opened correctly";
             }
 
-	    k_rate=(rate * 200) / (rate * 4);
-		cout << "rate= " << rate << endl;
-                qDebug() << "k_rate = "<< k_rate << endl;
+            /* my diff: now using a dynamic array, `cause the size is unknown while compile */
+            /* also i shifted it in cases directly */
+            size_t size = params.N + 10;
+            short *inf_bit = new short[size];
 
-	    short inf_bit[N+10];
-                cout << "N = "<< N +10 << endl;
+            /* my diff: i guess it must shows the size of the inf_bit array, so */
+            qDebug() << "Size is " << size << Qt::endl;
 
-	    k = 0; rnd = 0;
+            /* my diff: k_rate was replaced with samples per symbol that calculating in params */
+            params.recalcSamples();
 
-        /* my diff: srand added! absence of it was a big error btw */
-        srand(time(0));
-	if(meandr == 0)
-	{    
-    	    rnd = rand()%2;	    
-	    for(i=n1; i<=n2; i++)
-		{
-                 inf_bit[i] = rnd;
-		if(k==k_rate)
-		  {
-		   rnd = rand()%2;
-		   k = 0;    
-	          }
-		else
-                      k++;                  
-	   	}
-         }
-	    else
-               {
-		for(i=n1; i<=n2; i++)
-		{
-                 inf_bit[i] = rnd;
-		if(k==k_rate)
-		  {
-		   rnd = !rnd;
-		   k = 0;    
-	          }
-		else
-                     k++; 
-             	}
-               }
+            /* my diff: srand added! absence of it was a big error btw */
+            srand(time(0));
 
-            for (i=n1;i<=n2;i++){
-                switch(inf_bit[i]){
-                    case 0:
-                        Re = A * (cos(2*PI*(-df)*i/fd));
-                        Im = A * (sin(2*PI*(-df)*i/fd));
-                    break;
-                    case 1:
-                        Re = A * (cos(2*PI*(df)*i/fd));
-                        Im = A * (sin(2*PI*(df)*i/fd));
-                    break;
-                    default:
-                        qDebug() << "default case in frequency modulation";
+            /* my diff: now it`s normal switch-case with clear modes */
+            switch (params.meandr) {
+                /* here we must generate random bits */
+                case MEANDR_MODE_RANDOM: {
+                    /* running N times */
+                    /* filling inf_bit with random (from 0 to 1) value */
+                    /* when reaching samples per symbol limit -> generate new value */
+                    inf_bit[0] = rand() % 2; /* generating value between 0 and 2 - 1 (1) */
+                    for (int i = 1; i < params.N; ++i) {
+                        /* there was array with different indexing, where i was i + n1 */
+                        /* idk if it should be so */
+                        inf_bit[i /* + params.n1 */] = i % params.samplesPerSymbol == 0 ?
+                                                       rand() % 2 :
+                                                       inf_bit[i - 1 /* + params.n1 */];
+                    }
+
                     break;
                 }
+
+                /* it`s easier: we`re alternate between 0 and 1 */
+                case MEANDR_MODE_TOGGLE: {
+                    /* my diff: there also was different indexing */
+                    inf_bit[0] = rand() % 2;
+                    for (int i = 1; i < params.N; ++i) {
+                        /* there was array with different indexing, where i was i + n1 */
+                        /* idk if it should be so */
+                        inf_bit[i /* + params.n1 */] = i % params.samplesPerSymbol == 0 ?
+                                                       ~inf_bit[i - 1 /* + params.n1 */] :
+                                                       inf_bit[i - 1 /* + params.n1 */];
+                    }
+
+                    break;
+                }
+            }
+
+            for (int i = params.n1; i <= params.n2; ++i) {
+                switch (inf_bit[i]) {
+                    case 0:
+                        Re = params.A * (cos(2 * PI * (-params.df) * i / params.fd));
+                        Im = params.A * (sin(2 * PI * (-params.df) * i / params.fd));
+                        break;
+                    case 1:
+                        Re = params.A * (cos(2 * PI * params.df * i / params.fd));
+                        Im = params.A * (sin(2 * PI * params.df * i / params.fd));
+                        break;
+                    default:
+                        qDebug() << "Default case in frequency modulation";
+                        break;
+                }
+
                 result[0]=Re;
                 result[1]=Im;
-                if (fileoutfsk == NULL){
-                    qDebug() << "error opening fsk";
-                }
-                else{
-                    fwrite(result, sizeof(short), 2, fileoutfsk);
-                }
-                ui->progressBar->setValue(i);
+
+                fwrite(result, sizeof(short), 2, fileoutfsk);
+                ui -> progressBar -> setValue(i);
             }
+
             fclose(fileoutfsk);
-//            qDebug() << __LINE__;
-        break;
-    }
-        case 2:{
-            fileout8psk = fopen("result8psk.dat","w+b");
-            if (fileout8psk == NULL){
-                qDebug() << "8psk file NOT opened";
+            break;
+        } /* third mode! didn`t u forget abdout that construction? `cause i did! */
+
+        case PHASE_MODE: {
+            fileout8psk = fopen(PHASE_MODE_RESULT_FILE_PATH, "w+b");
+
+            /* my diff: normal debug x3 */
+            if (fileout8psk == NULL) {
+                qDebug() << "Error during opening 8psk file";
+                return;
             }
-            else{
-                qDebug() << "8psk file opened";
+            else {
+                qDebug() << "File 8psk opened correctly";
             }
-	    k_rate=((rate/10) * 8);
-	    k = 0;
-	    if(meandr == 0)
-             {
-	    rnd = rand()%8;	    
-	    for(i=n1; i<=n2; i++)
-		{
-                 inf_bit[i] = rnd;
-		if(k==k_rate)
-		  {
-		   rnd = rand()%8;
-//                   qDebug() << "rnd = " << rnd << endl;
-		   k = 0;    
-	          }
-		else
-		    {
-                      k++;                  
-                      qDebug() << "k = " << k << endl;
-	   	    }
-		}
-            }
-	     else
-                {
-	    	for(i=n1; i<=n2; i++)
-	     	  { 
+
+            /* my diff: now using a dynamic array, `cause the size is unknown while compile */
+            size_t size = params.N + 10;
+            short *inf_bit = new short[size];
+
+            /* my diff: i guess it must shows the size of the inf_bit array, so */
+            qDebug() << "Size is " << size << Qt::endl;
+
+            k_rate = ((rate / 10) * 8); /* idk what is that for... */
+            k = 0; /* bruh, this strange one again */
+            if (params.meandr == 0) {
+                rnd = rand() % 8;
+                for (int i = params.n1; i <= params.n2; ++i) {
                     inf_bit[i] = rnd;
-	            if(k==k_rate)
-	              {
-	                rnd++;
-			if(rnd == 8)
-                                    rnd = 0;
-	     	        k = 0;    
-	              }
-		      else
-                           k++; 
-                  }
-               	}
-			
+
+                    if(k == k_rate) {
+                        rnd = rand() % 8;
+                        k = 0;
+                    }
+                    else {
+                        ++k;
+                    }
+                }
+            }
+            else {
+                for(int i = params.n1; i <= params.n2; ++i) {
+                    inf_bit[i] = rnd;
+
+                    if (k == k_rate) {
+                        ++rnd;
+
+                        if(rnd == 8) rnd = 0;
+
+                        k = 0;
+                    }
+                    else {
+                        ++k;
+                    }
+                }
+            }
 
             // int rnd[N+10];
             for (i=n1;i<=n2;i++){
@@ -386,12 +398,13 @@ void MainWindow::on_pbwritefile_clicked()
                 }
             }
             fclose(fileout8psk);
-        break;
-    }
+            break;
+        }
+
         default:
-            qDebug() << "something went wrong(maybe generating random numbers(0/1)";
-        break;
-        }*/
+            qDebug() << "Default case in modes" << Qt::endl;
+            break;
+    }
 }
 
 /* TODO: review */

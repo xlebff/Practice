@@ -32,6 +32,9 @@ const int MEANDR_MAX = 1;
 const QString PATH ="params.ini";
 const QString PARAMS = "Params";
 
+const int MEANDR_MODE_RANDOM = 0;
+const int MEANDR_MODE_TOGGLE = 1;
+
 
 struct SignalParams {
     int A = A_DEFAULT;
@@ -43,6 +46,7 @@ struct SignalParams {
     int rate = RATE_DEFAULT;
     int meandr = MEANDR_DEFAULT;
     int N = 0;
+    int samplesPerSymbol = 0;
 
     void loadFromSettings(const QString &path = PATH) {
         QSettings sett(path, QSettings::IniFormat);
@@ -66,6 +70,17 @@ struct SignalParams {
 
     void recalcN() {
         N = n2 - n1;
+    }
+
+    void recalcSamples() {
+        /* my diff: replaced k_rate */
+        samplesPerSymbol = fd / rate;
+        /* aand validation */
+        if (samplesPerSymbol < 1) samplesPerSymbol = 1;
+        else { ; }
+        /* aand debug */
+        qDebug() << "Rate is " << rate << Qt::endl;
+        qDebug() << samplesPerSymbol << " samples per symbol" << Qt::endl;
     }
 
     void sanitize()

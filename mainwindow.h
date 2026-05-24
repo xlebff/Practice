@@ -20,7 +20,7 @@ class MainWindow : public QMainWindow
         ~MainWindow();
         SignalParams params;
         double Xt, Re, Im;
-        int perek;
+        int mode;
         FILE* fileoutcarrier;
         FILE* fileoutfsk;
         FILE* fileout8psk;
