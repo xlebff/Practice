@@ -4,6 +4,7 @@
 #include <qcustomplot.h>
 #include <fftw3.h>
 #include <unistd.h>
+#include "SignalParams.h"
 
 namespace Ui
 {
@@ -17,7 +18,7 @@ class MainWindow : public QMainWindow
     public:
         explicit MainWindow(QWidget *parent = 0);
         ~MainWindow();
-        int A, f, n1, fd, n2,df, rate, k_rate, meandr, N;
+        SignalParams params;
         double Xt, Re, Im;
         int perek;
         FILE* fileoutcarrier;
@@ -34,9 +35,9 @@ class MainWindow : public QMainWindow
         void on_pbwritefile_clicked();
         void on_pbclean_clicked();
         void on_pbremovefile_clicked();
-        void sanitizeParams();
 
     private:
         Ui::MainWindow *ui;
         QString file_name;
+        double minY, maxY;
 };

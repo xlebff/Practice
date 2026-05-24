@@ -30,14 +30,15 @@ public:
     QWidget *centralWidget;
     QGridLayout *gridLayout_2;
     QGridLayout *gridLayout;
-    QPushButton *pbremovefile;
-    QPushButton *pbwritefile;
     QPushButton *pbclean;
+    QPushButton *pbtime;
     QComboBox *comboBox;
     QCustomPlot *widget;
     QPushButton *pbclose;
     QProgressBar *progressBar;
-    QPushButton *pbtime;
+    QPushButton *pbremovefile;
+    QPushButton *pbwritefile;
+    QPushButton *pbspectrum;
     QMenuBar *menuBar;
     QToolBar *mainToolBar;
     QStatusBar *statusBar;
@@ -56,21 +57,16 @@ public:
         gridLayout = new QGridLayout();
         gridLayout->setSpacing(6);
         gridLayout->setObjectName(QString::fromUtf8("gridLayout"));
-        pbremovefile = new QPushButton(centralWidget);
-        pbremovefile->setObjectName(QString::fromUtf8("pbremovefile"));
-
-        gridLayout->addWidget(pbremovefile, 2, 3, 1, 1);
-
-        pbwritefile = new QPushButton(centralWidget);
-        pbwritefile->setObjectName(QString::fromUtf8("pbwritefile"));
-
-        gridLayout->addWidget(pbwritefile, 2, 2, 1, 1);
-
         pbclean = new QPushButton(centralWidget);
         pbclean->setObjectName(QString::fromUtf8("pbclean"));
         pbclean->setCheckable(false);
 
-        gridLayout->addWidget(pbclean, 2, 1, 1, 1);
+        gridLayout->addWidget(pbclean, 2, 2, 1, 1);
+
+        pbtime = new QPushButton(centralWidget);
+        pbtime->setObjectName(QString::fromUtf8("pbtime"));
+
+        gridLayout->addWidget(pbtime, 2, 0, 1, 1);
 
         comboBox = new QComboBox(centralWidget);
         comboBox->addItem(QString());
@@ -79,29 +75,39 @@ public:
         comboBox->setObjectName(QString::fromUtf8("comboBox"));
         comboBox->setMinimumSize(QSize(0, 26));
 
-        gridLayout->addWidget(comboBox, 2, 4, 1, 1);
+        gridLayout->addWidget(comboBox, 2, 5, 1, 1);
 
         widget = new QCustomPlot(centralWidget);
         widget->setObjectName(QString::fromUtf8("widget"));
 
-        gridLayout->addWidget(widget, 0, 0, 1, 5);
+        gridLayout->addWidget(widget, 0, 0, 1, 6);
 
         pbclose = new QPushButton(centralWidget);
         pbclose->setObjectName(QString::fromUtf8("pbclose"));
 
-        gridLayout->addWidget(pbclose, 3, 4, 1, 1);
+        gridLayout->addWidget(pbclose, 3, 5, 1, 1);
 
         progressBar = new QProgressBar(centralWidget);
         progressBar->setObjectName(QString::fromUtf8("progressBar"));
         progressBar->setValue(24);
         progressBar->setAlignment(Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter);
 
-        gridLayout->addWidget(progressBar, 3, 0, 1, 4);
+        gridLayout->addWidget(progressBar, 3, 0, 1, 5);
 
-        pbtime = new QPushButton(centralWidget);
-        pbtime->setObjectName(QString::fromUtf8("pbtime"));
+        pbremovefile = new QPushButton(centralWidget);
+        pbremovefile->setObjectName(QString::fromUtf8("pbremovefile"));
 
-        gridLayout->addWidget(pbtime, 2, 0, 1, 1);
+        gridLayout->addWidget(pbremovefile, 2, 4, 1, 1);
+
+        pbwritefile = new QPushButton(centralWidget);
+        pbwritefile->setObjectName(QString::fromUtf8("pbwritefile"));
+
+        gridLayout->addWidget(pbwritefile, 2, 3, 1, 1);
+
+        pbspectrum = new QPushButton(centralWidget);
+        pbspectrum->setObjectName(QString::fromUtf8("pbspectrum"));
+
+        gridLayout->addWidget(pbspectrum, 2, 1, 1, 1);
 
 
         gridLayout_2->addLayout(gridLayout, 0, 0, 1, 1);
@@ -126,15 +132,16 @@ public:
     void retranslateUi(QMainWindow *MainWindow)
     {
         MainWindow->setWindowTitle(QCoreApplication::translate("MainWindow", "MainWindow", nullptr));
-        pbremovefile->setText(QCoreApplication::translate("MainWindow", "Remove file", nullptr));
-        pbwritefile->setText(QCoreApplication::translate("MainWindow", "Write file", nullptr));
         pbclean->setText(QCoreApplication::translate("MainWindow", "Clean", nullptr));
+        pbtime->setText(QCoreApplication::translate("MainWindow", "Time", nullptr));
         comboBox->setItemText(0, QCoreApplication::translate("MainWindow", "\320\235\320\265\321\201\321\203\321\211\320\260\321\217", nullptr));
         comboBox->setItemText(1, QCoreApplication::translate("MainWindow", "\320\247\320\260\321\201\321\202\320\276\321\202\320\275\320\260\321\217 \321\202\320\265\320\273\320\265\320\263\321\200\320\260\321\204\320\270\321\217", nullptr));
         comboBox->setItemText(2, QCoreApplication::translate("MainWindow", "8-\321\204\320\260\320\267\320\276\320\262\320\260\321\217 \320\274\320\276\320\264\321\203\320\273\321\217\321\206\320\270\321\217", nullptr));
 
         pbclose->setText(QCoreApplication::translate("MainWindow", "Close", nullptr));
-        pbtime->setText(QCoreApplication::translate("MainWindow", "PushButton", nullptr));
+        pbremovefile->setText(QCoreApplication::translate("MainWindow", "Remove file", nullptr));
+        pbwritefile->setText(QCoreApplication::translate("MainWindow", "Write file", nullptr));
+        pbspectrum->setText(QCoreApplication::translate("MainWindow", "Spectrum", nullptr));
     } // retranslateUi
 
 };

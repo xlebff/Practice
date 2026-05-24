@@ -8,41 +8,18 @@
 #include <stdlib.h>
 #include <QMainWindow>
 #include <QString>
-#include <iostream>
 
 using namespace std;
 
 const QString WINDOW_TITLE = "Modulation of signal";
-const QString X_AXIS_LABEL = "Real is blue, Imaginary is red";
+const QString X_AXIS_TIME_LABEL = "Real is blue, Imaginary is red";
+const QString X_AXIS_SPECTRUM_LABEL = "Spectrum line";
 const QString Y_AXIS_LABEL = "A";
 
-const QString PATH ="params.ini";
-const QString PARAMS = "Params";
+const char *RESULT0_FILE_PATH = "resultcarrier.dat";
+const char *RESULT1_FILE_PATH = "resultfsk.dat";
 
 const double PI = acos(-1.0);
-
-const int A_DEFAULT = 100;
-const int F_DEFAULT = 10;
-const int FD_DEFAULT = 1000;
-const int N1_DEFAULT = 0;
-const int N2_DEFAULT = 400;
-const int DF_DEFAULT = 100;
-const int RATE_DEFAULT = 200;
-const int MEANDR_DEFAULT = 0;
-
-const int A_MIN = 1;
-const int A_MAX = 1000000;
-const int F_MIN = 1;
-const int FD_MIN = 10;
-const int FD_MAX = 1000000;
-const int N1_MIN = 0;
-const int N1_MAX = 1000000;
-const int N2_MIN = 2;
-const int N2_MAX = 1000000;
-const int DF_MIN = 1;
-const int RATE_MIN = 1;
-const int MEANDR_MIN = 0;
-const int MEANDR_MAX = 1;
 
 
 MainWindow::MainWindow(QWidget *parent) :
@@ -60,105 +37,49 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-/* my diff: method for normalize params. posibly will be upgrated and will start show */
-/* concrete var that was normalized */
-/* also i think it has to show debug in the widget */
-void normalize(int &val, const int min, const int max)
-{
-    if (val < min) {
-        val = min;
-        qDebug() << "Some value was too low and was normalized" << Qt::endl;
-    }
-    else if (val > max) {
-        val = max;
-        qDebug() << "Some value was too high and was normalized" << Qt::endl;
-    }
-    else ;
-}
-
-/* my diff: method for check params and fix it */
-void MainWindow::sanitizeParams()
-{
-    normalize(A, A_MIN, A_MAX);
-    normalize(fd, FD_MIN, FD_MAX);
-    normalize(f, F_MIN, fd / 2);
-    normalize(n1, N1_MIN, N1_MAX);
-    normalize(n2, N2_MIN, N2_MAX);
-    normalize(df, DF_MIN, fd / 2);
-    normalize(rate, RATE_MIN, fd / 2);
-    normalize(meandr, MEANDR_MIN, MEANDR_MAX);
-
-    if (n2 <= n1) {
-        n2 = n1 + 2;
-        qDebug() << "N2 was normalized" << Qt::endl;
-    }
-    else ;
-}
-
 /* my diff: now there is 2 buttons to 2 distinct functions */
 void MainWindow::on_pbtime_clicked()
 {
     /* my diff: updated debug message */
     qDebug() << "Plotting a graph" << Qt::endl;
 
-    /* my diff: magic string was replaced with const QString */
-    QSettings sett(PATH, QSettings::IniFormat);
+    /* me diff: now params is a struct! */
+    params.loadFromSettings();
+    params.sanitize();
 
-    /* my diff: debugging */
-    qDebug() << "Looking for file: " << sett.fileName();
-    qDebug() << "File exists: " << QFile::exists(PATH) << Qt::endl;
-
-    /* my diff: used group */
-    sett.beginGroup(PARAMS);
-    /* my diff: added default values */
-    this->A = sett.value("A", A_DEFAULT).toInt();
-    this->f = sett.value("f", F_DEFAULT).toInt();
-    this->fd = sett.value("fd", FD_DEFAULT).toInt();
-    this->n1 = sett.value("n1", N1_DEFAULT).toInt();
-    this->n2 = sett.value("n2", N2_DEFAULT).toInt();
-    this->df = sett.value("df", DF_DEFAULT).toInt();
-    this->rate = sett.value("rate", RATE_DEFAULT).toInt();
-    this->meandr = sett.value("meandr", MEANDR_DEFAULT).toInt();
-    sett.endGroup();
-
-    /* my diff: serializing params! */
-    sanitizeParams();
-
-    /* my diff: ints i and X was deleted! */
-    N = ( n2 - n1 ); /* where N is an amount of the points */
-
-    double minY, maxY; /* vars for limiting the OY axis on the graph */
+    /* my diff: clear! */
+    ui -> widget -> clearGraphs();
 
     /* vectors for plotting the graph */
     /* x is an index on OX axis (can be considered as time */
     /* re is a common-mode component (OY axis, blue) */
     /* im is a quadrature component (OY axis, red) */
-    QVector<double> x(N), re(N), im(N);
+    QVector<double> x(params.N), re(params.N), im(params.N);
 
     /* my diff: fixed strange cycle */
-    for (int i = 0; i < N; ++i) {
-        int X = n1 + i;
+    /* also now PI is a const! */
+    for (int i = 0; i < params.N; ++i) {
+        int X = params.n1 + i;
         x[i] = X;
-        /* my diff: var "pi" was replaced with const PI, must be tested! */
-        re[i] = A*(cos(2*PI*f*X/fd));
-        im[i] = A*(sin(2*PI*f*X/fd));
+        re[i] = params.A * (cos(2 * PI * params.f * X / params.fd));
+        im[i] = params.A * (sin(2 * PI * params.f * X / params.fd));
     }
 
     /* setting min and max y for OY axis */
     /* my diff: two distinct cycles was united */
     minY = re[0], maxY = re[0];
-    for (int i = 1; i < N; ++i){
+    for (int i = 1; i < params.N; ++i) {
         if (re[i] < minY) minY = re[i];
         else if (re[i] > maxY) maxY = re[i];
-        else ;
+        else { ; }
 
         if (im[i] < minY) minY = im[i];
         else if (im[i] > maxY) maxY = im[i];
-        else ;
+        else { ; }
     }
 
-    ui -> widget -> xAxis -> setLabel(X_AXIS_LABEL);
-    ui -> widget -> xAxis -> setRange(n1, n2);
+    ui -> widget -> xAxis -> setLabel(X_AXIS_TIME_LABEL);
+    ui -> widget -> xAxis -> setRange(params.n1, params.n2);
 
     ui -> widget -> yAxis -> setLabel(Y_AXIS_LABEL);
     /* my diff: method "rescale axis" was deleted, because we`re setting it manually */
@@ -175,130 +96,128 @@ void MainWindow::on_pbtime_clicked()
     ui -> widget -> replot();
 }
 
-/* TODO: review and fixe whole method */
 void MainWindow::on_pbspectrum_clicked()
 {
-    ;
-    /*
+    qDebug() << "Spectrum chart";
+
+    params.loadFromSettings();
+    params.sanitize();
+
     ui -> widget -> clearGraphs();
 
-    qDebug()<<"window FFT";
-    i = 0;
-    QVector < double > out_fftw_graf(N);
-    QVector < double > XX(N);
-    fftw_complex in_fftw[N], out_fftw[N];
-    fftw_plan plan;/*plan_inv;
+    QVector<double> out_fftw_graf(params.N);
+    QVector<double> x(params.N);
+    fftw_complex *in_fftw, *out_fftw;
+    fftw_plan plan;
 
-    for (X=n1; X<n2; X++){
-        in_fftw[X].re = A*(cos(2*PI*f*X/fd));
-        in_fftw[X].im = A*(sin(2*PI*f*X/fd));
+    in_fftw = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * params.N);
+    out_fftw = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * params.N);
+
+    for (int i = 0; i < params.N; ++i) {
+        int X = params.n1 + i;
+        in_fftw[i][0] = params.A * (cos(2 * PI * params.f * X / params.fd));
+        in_fftw[i][1] = params.A * (sin(2 * PI * params.f * X / params.fd));
     }
 
-    //        /* создать оценочный план для прямого БПФ на массиве из N точек
-    plan = fftw_plan_dft_1d(N, FFTW_FORWARD, FFTW_ESTIMATE);
-    /* вычислить спектр сигнала, заданного массивом in, в соответствии с планом plan
-    fftw_one(plan, in_fftw, out_fftw);
-    //        /* вычислить сигнала по спектру, заданному массивом out, в соответствии с планом plan_inv
-    ////        fftw_one(plan_inv, out, in);
+    plan = fftw_plan_dft_1d(params.N, in_fftw, out_fftw, FFTW_FORWARD, FFTW_ESTIMATE);
+    fftw_execute(plan);
 
-    //        /* удаление ранее созданного плана
-    //        fftw_destroy_plan(plan);
-    //        fftw_destroy_plan(plan_inv);
-
-    double minYY = out_fftw[0].re, maxYY = out_fftw[0].re;
-    for(i=0; i<N; i++){
-        out_fftw_graf[i] = (out_fftw[i].re)*(out_fftw[i].re) + (out_fftw[i].im) * (out_fftw[i].im);
+    for (int i = 0; i < params.N; ++i) {
+        out_fftw_graf[i] = (out_fftw[i][0])*(out_fftw[i][0]) + (out_fftw[i][1])*(out_fftw[i][1]);
         out_fftw_graf[i] = sqrt(out_fftw_graf[i]);
-        //	qDebug() << "mass = "<< out_fftw_graf[i] << endl;
+
+        x[i] = (i < params.N/2) ? (i * params.fd / params.N) : ((i - params.N) * params.fd / params.N);
     }
 
-    double N_min_YY=0, N_max_YY=0;
-    for (i=0; i<N; i++){
-        if (out_fftw_graf[i]<minYY) {minYY = out_fftw_graf[i]; N_min_YY=i;}
-        if (out_fftw_graf[i]>maxYY) {maxYY = out_fftw_graf[i]; N_max_YY=i;}
-        //	    XX[i] = N_max_YY;
-    }
-    if(N_max_YY >= fd/2)
-        N_max_YY = N_max_YY - fd;
-
-    for(i = 0; i< N; i++)
-    {
-        XX[i] = N_max_YY;
+    minY = out_fftw[0][0], maxY = out_fftw[0][0];
+    for (int i = 0; i < params.N; ++i){
+        if (out_fftw_graf[i] < minY) minY = out_fftw_graf[i];
+        else if (out_fftw_graf[i] > maxY) maxY = out_fftw_graf[i];
+        else { ; }
     }
 
-    //for(i=0; i<N; i++)
-    //	qDebug() << "XX[N_max] = "<< XX[i] << i <<endl;
+    /* my diff: there was a wrong attempt to display negative frequencies */
+    /* i deleted it, but probably we should make it right */
 
-    //	qDebug() << "min_YY = "<< minYY << endl;
-    qDebug() << "max_YY = "<< maxYY << Qt::endl;
-    //	qDebug() << "N_min_YY = "<< N_min_YY << endl;
-    qDebug() << "N_max_YY = "<< N_max_YY << Qt::endl;
+    /* my diff: magic string was replaced with const */
+    ui -> widget -> xAxis -> setLabel(X_AXIS_SPECTRUM_LABEL);
+    ui -> widget -> xAxis -> setRange(-params.fd/2, params.fd/2);
+    ui -> widget -> xAxis -> grid() -> setVisible(true);
 
-    ui -> widget -> xAxis -> setLabel("Spectr_Line");
-    ui -> widget -> yAxis -> setLabel("A");
-    ui -> widget -> yAxis -> setRange(minYY, maxYY);//Для оси Oy
-    ui -> widget -> xAxis -> setRange(-fd/2, fd/2);
-    ui -> widget -> xAxis -> grid()->setVisible(true);
+    ui -> widget -> yAxis -> setLabel(Y_AXIS_LABEL);
+    ui -> widget -> yAxis -> setRange(minY, maxY);
 
-    //        qDebug()<<__LINE__;
-    //        ui -> widget -> xAxis -> setRange(-N/2, N/2);
     ui -> widget -> addGraph();
-    ui -> widget -> graph(0)->setData(XX,out_fftw_graf);
+    ui -> widget -> graph(0) -> setData(x, out_fftw_graf);
+    ui -> widget -> graph(0) -> setPen(QPen(Qt::red));
 
-    //        ui -> widget -> graph(0) -> rescaleAxes(true);
-    ui -> widget -> graph(0) -> setPen(QPen(Qt::red)); // line color red for second graph
-    //        ui -> widget -> clearGraphs();
-    */
+    ui -> widget -> replot();
+
+    fftw_destroy_plan(plan);
+    fftw_free(in_fftw);
+    fftw_free(out_fftw);
 }
 
 /* TODO: review */
 void MainWindow::on_pbwritefile_clicked()
 {
-    qDebug() << "write clicked";
+    qDebug() << "Writing file" << Qt::endl;
+
     int i = 0;
     int rnd = 0;
     int k = 0;
-    short result[2];
-    short inf_bit[N+10];
-    cout << "N = "<< N +10 << endl;
+    short result[2]; /* idk why there is short. probably the other program needs it. */
+    /* i think we can do conditional compilation, but should we? */
 
-    ui->progressBar->setMaximum(n2);
-    ui->progressBar->setMinimum(n1);
-    perek=ui->comboBox->currentIndex();
-    switch(perek){
-        case 0:{
-            fileoutcarrier = fopen("resultcarrier.dat", "w+b");
+    /* my diff: now using a dynamic array, `cause the size is unknown while compile */
+    size_t size = params.N + 10;
+    short *inf_bit = new short[size];
+
+    /* my diff: i guess it must shows the size of the inf_bit array, so */
+    qDebug() << "Size is " << size << Qt::endl;
+
+    ui -> progressBar -> setMaximum(params.n2);
+    ui -> progressBar -> setMinimum(params.n1);
+    mode = ui -> comboBox -> currentIndex();
+
+    switch(mode) {
+        case 0: {
+            /* my diff: updated magic string */
+            fileoutcarrier = fopen(RESULT0_FILE_PATH, "w+b");
+
+            /* my diff: normal debug! */
             if (fileoutcarrier == NULL){
-                qDebug() << "carrier file NOT opened";
+                qDebug() << "Error during opening file";
+                return;
             }
-            else{
-                qDebug() << "carrier file opened";
+            else {
+                qDebug() << "File opened correctly";
             }
-            for (i=n1;i<=n2;i++){
-                Re = A*(cos(2*PI*f*i/fd));
-                Im = A*(sin(2*PI*f*i/fd));
-                result[0]=Re;
-                result[1]=Im;
-                if (fileoutcarrier == NULL){
-                    qDebug() << "error opening carrier";
-                }
-                else{
-                    fwrite(result, sizeof(short), 2, fileoutcarrier);
-                }
-                ui->progressBar->setValue(i);
+
+            for (int i = params.n1; i <= params.n2; ++i) {
+                Re = params.A * (cos(2 * PI * params.f * i / params.fd));
+                Im = params.A * (sin(2 * PI * params.f * i / params.fd));
+                result[0] = Re;
+                result[1] = Im;
+                fwrite(result, sizeof(short), 2, fileoutcarrier);
+                ui -> progressBar -> setValue(i);
             }
+
             fclose(fileoutcarrier);
-//            qDebug() << __LINE__;
-        break;
-    }
-    case 1:{
-            fileoutfsk = fopen("resultfsk.dat","w+b");
-            if ((fileoutfsk == NULL)){
-                qDebug() << "fsk file NOT opened";
+            break;
+        }
+
+        case 1: {
+            fileoutfsk = fopen(RESULT1_FILE_PATH,"w+b");
+
+            if (fileoutfsk == NULL){
+                qDebug() << "Error during opening file";
+                return;
             }
-            else{
-                qDebug() << "fsk file opened";
+            else {
+                qDebug() << "File opened correctly";
             }
+
 	    k_rate=(rate * 200) / (rate * 4);
 		cout << "rate= " << rate << endl;
                 qDebug() << "k_rate = "<< k_rate << endl;
@@ -307,6 +226,9 @@ void MainWindow::on_pbwritefile_clicked()
                 cout << "N = "<< N +10 << endl;
 
 	    k = 0; rnd = 0;
+
+        /* my diff: srand added! absence of it was a big error btw */
+        srand(time(0));
 	if(meandr == 0)
 	{    
     	    rnd = rand()%2;	    
@@ -414,7 +336,8 @@ void MainWindow::on_pbwritefile_clicked()
 
             // int rnd[N+10];
             for (i=n1;i<=n2;i++){
-            //    rnd[i]=rand()%8;/*os[n].digitValue()*/
+            //    rnd[i]=rand()%8;/*os[n].digitValue()
+                /* WHATA HEEELL */
                 switch(inf_bit[i]){
                     case 0:
                         Re = A* (cos(0));
@@ -468,47 +391,43 @@ void MainWindow::on_pbwritefile_clicked()
         default:
             qDebug() << "something went wrong(maybe generating random numbers(0/1)";
         break;
-        }
-}
-
-/* TODO: review */
-void MainWindow::on_pbclean_clicked()
-{
-        qDebug() << "clean clicked";
-        ui->widget->clearPlottables();
-        ui->widget->replot();
-        ui->progressBar->setValue(0);
-        QSettings sett("/media/sf_general/praktika/praktika/params.ini", QSettings::IniFormat);
-        sett.remove("os");
-
- //       ui->widget->rescaleAxes(true);
-}
-
-/* TODO: review */
-void MainWindow::on_pbclose_clicked()
-{
-    qDebug() << "close clicked";
-    close();
+        }*/
 }
 
 /* TODO: review */
 void MainWindow::on_pbremovefile_clicked()
 {
-        qDebug() << "remove files clicked";
-        perek=ui->comboBox->currentIndex();
-        switch(perek){
-            case 0:
-                remove("resultcarrier.dat");
-            break;
-            case 1:
-                remove("resultfsk.dat");
-            break;
-            case 2:
-                remove("result8psk.dat");
-            break;
-            default:
-                qDebug() << "case error";
-            break;
+    qDebug() << "remove files clicked";
+    mode=ui->comboBox->currentIndex();
+    switch(mode){
+    case 0:
+        remove("resultcarrier.dat");
+        break;
+    case 1:
+        remove("resultfsk.dat");
+        break;
+    case 2:
+        remove("result8psk.dat");
+        break;
+    default:
+        qDebug() << "case error";
+        break;
         qDebug() << "removed files";
-        }
+    }
+}
+
+void MainWindow::on_pbclean_clicked()
+{
+    qDebug() << "Cleaning" << Qt::endl;
+
+    ui -> widget -> clearPlottables();
+    ui -> widget -> replot();
+    ui -> progressBar -> setValue(0);
+}
+
+void MainWindow::on_pbclose_clicked()
+{
+    qDebug() << "Closing" << Qt::endl;
+
+    close();
 }

@@ -17,6 +17,7 @@ SOURCES += main.cpp\
     qcustomplot.cpp
 
 HEADERS  += mainwindow.h \
+    SignalParams.h \
     qcustomplot.h
 
 FORMS    += mainwindow.ui
