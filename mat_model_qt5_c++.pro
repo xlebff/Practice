@@ -25,3 +25,6 @@ FORMS    += mainwindow.ui
 OTHER_FILES += \
     params.ini
 LIBS += -lfftw3
+
+DISTFILES += \
+    commented.txt

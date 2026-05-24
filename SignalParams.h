@@ -1,10 +1,9 @@
 #pragma once
 
 #include <QSettings>
-#include <QVariant>
 #include <QDebug>
 #include <QString>
-#include <qcustomplot.h> /* for QFile */
+#include <QFile>
 
 const int A_DEFAULT = 100;
 const int F_DEFAULT = 10;
@@ -55,29 +54,29 @@ struct SignalParams {
         qDebug() << "File exists: " << QFile::exists(PATH) << Qt::endl;
 
         sett.beginGroup(PARAMS);
-        this->A = sett.value("A", A_DEFAULT).toInt();
-        this->f = sett.value("f", F_DEFAULT).toInt();
-        this->fd = sett.value("fd", FD_DEFAULT).toInt();
-        this->n1 = sett.value("n1", N1_DEFAULT).toInt();
-        this->n2 = sett.value("n2", N2_DEFAULT).toInt();
-        this->df = sett.value("df", DF_DEFAULT).toInt();
-        this->rate = sett.value("rate", RATE_DEFAULT).toInt();
-        this->meandr = sett.value("meandr", MEANDR_DEFAULT).toInt();
+        this -> A = sett.value("A", A_DEFAULT).toInt();
+        this -> f = sett.value("f", F_DEFAULT).toInt();
+        this -> fd = sett.value("fd", FD_DEFAULT).toInt();
+        this -> n1 = sett.value("n1", N1_DEFAULT).toInt();
+        this -> n2 = sett.value("n2", N2_DEFAULT).toInt();
+        this -> df = sett.value("df", DF_DEFAULT).toInt();
+        this -> rate = sett.value("rate", RATE_DEFAULT).toInt();
+        this -> meandr = sett.value("meandr", MEANDR_DEFAULT).toInt();
         sett.endGroup();
-
-        recalcN();
     }
 
-    void recalcN() {
+    void recalcN()
+    {
         N = n2 - n1;
     }
 
-    void recalcSamples() {
+    void recalcSamples()
+    {
         /* my diff: replaced k_rate */
         samplesPerSymbol = fd / rate;
         /* aand validation */
         if (samplesPerSymbol < 1) samplesPerSymbol = 1;
-        else { ; }
+
         /* aand debug */
         qDebug() << "Rate is " << rate << Qt::endl;
         qDebug() << samplesPerSymbol << " samples per symbol" << Qt::endl;
@@ -93,6 +92,18 @@ struct SignalParams {
         normalize(df, DF_MIN, fd / 2, "Df");
         normalize(rate, RATE_MIN, fd / 2, "Rate");
         normalize(meandr, MEANDR_MIN, MEANDR_MAX, "Meandr");
+
+        recalcN();
+
+        if (N <= 0) {
+            qDebug() << "Error during calculating N!" << Qt::endl;
+            exit(1);
+        }
+
+        if (rate > fd) {
+            rate = fd;
+            qDebug() << "Rate reduced to fd" << Qt::endl;
+        }
     }
 
     /* my diff: method for normalize params. was updated and now shows what var was fixed. */
@@ -109,6 +120,5 @@ struct SignalParams {
             qDebug() << name << " must be less than " <<
                 max << ". Value was normalized" << Qt::endl;
         }
-        else { ; }
     }
 };

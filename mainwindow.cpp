@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <QMainWindow>
 #include <QString>
+#include <ctime>
 
 using namespace std;
 
@@ -25,16 +26,22 @@ const int FREQUENCY_MODE = 1;
 const int PHASE_MODE = 2;
 
 const double PI = acos(-1.0);
+const int PHASES_COUNT = 8;
+const double PHASES[PHASES_COUNT] = {(0), (PI / 4), (PI / 2), (3 * PI / 4),
+                                     (PI), (5 * PI / 4), (3 * PI / 2), (7 * PI / 4)};
+
+enum class ModulationMode { CARRIER, FREQUENCY, PHASE }; /* TODO */
 
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
 {
-    ui->setupUi(this);
-    ui->progressBar->setValue(0);
-    /* my diff: magic string was replaced with const QString */
-    this->setWindowTitle(WINDOW_TITLE);
+    ui -> setupUi(this);
+    ui -> progressBar -> setValue(0);
+    this -> setWindowTitle(WINDOW_TITLE);
+
+    srand(time(0));
 }
 
 MainWindow::~MainWindow()
@@ -42,27 +49,17 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-/* my diff: now there is 2 buttons to 2 distinct functions */
 void MainWindow::on_pbtime_clicked()
 {
-    /* my diff: updated debug message */
     qDebug() << "Plotting a graph" << Qt::endl;
 
-    /* my diff: now params is a struct! */
     params.loadFromSettings();
     params.sanitize();
 
-    /* my diff: clear! */
     ui -> widget -> clearGraphs();
 
-    /* vectors for plotting the graph */
-    /* x is an index on OX axis (can be considered as time */
-    /* re is a common-mode component (OY axis, blue) */
-    /* im is a quadrature component (OY axis, red) */
     QVector<double> x(params.N), re(params.N), im(params.N);
 
-    /* my diff: fixed strange cycle */
-    /* also now PI is a const! */
     for (int i = 0; i < params.N; ++i) {
         int X = params.n1 + i;
         x[i] = X;
@@ -70,24 +67,19 @@ void MainWindow::on_pbtime_clicked()
         im[i] = params.A * (sin(2 * PI * params.f * X / params.fd));
     }
 
-    /* setting min and max y for OY axis */
-    /* my diff: two distinct cycles was united */
-    minY = re[0], maxY = re[0];
+    double minY = re[0], maxY = re[0];
     for (int i = 1; i < params.N; ++i) {
         if (re[i] < minY) minY = re[i];
         else if (re[i] > maxY) maxY = re[i];
-        else { ; }
 
         if (im[i] < minY) minY = im[i];
         else if (im[i] > maxY) maxY = im[i];
-        else { ; }
     }
 
     ui -> widget -> xAxis -> setLabel(X_AXIS_TIME_LABEL);
     ui -> widget -> xAxis -> setRange(params.n1, params.n2);
 
     ui -> widget -> yAxis -> setLabel(Y_AXIS_LABEL);
-    /* my diff: method "rescale axis" was deleted, because we`re setting it manually */
     ui -> widget -> yAxis -> setRange(minY, maxY);
 
     ui -> widget -> addGraph();
@@ -110,41 +102,45 @@ void MainWindow::on_pbspectrum_clicked()
 
     ui -> widget -> clearGraphs();
 
-    QVector<double> out_fftw_graf(params.N);
-    QVector<double> x(params.N);
+    QVector<double> out_fftw_graf(params.N), x(params.N);
     fftw_complex *in_fftw, *out_fftw;
     fftw_plan plan;
 
-    in_fftw = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * params.N);
-    out_fftw = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * params.N);
+    do {
+        in_fftw = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * params.N);
+        out_fftw = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * params.N);
+    } while (!in_fftw || !out_fftw);
 
     for (int i = 0; i < params.N; ++i) {
-        int X = params.n1 + i;
-        in_fftw[i][0] = params.A * (cos(2 * PI * params.f * X / params.fd));
-        in_fftw[i][1] = params.A * (sin(2 * PI * params.f * X / params.fd));
+        double arg = 2 * PI * params.f * (i + params.n1) / params.fd;
+        in_fftw[i][0] = params.A * (cos(arg));
+        in_fftw[i][1] = params.A * (sin(arg));
     }
 
     plan = fftw_plan_dft_1d(params.N, in_fftw, out_fftw, FFTW_FORWARD, FFTW_ESTIMATE);
+    if (!plan) {
+        qDebug() << "FFTW plan creation failed";
+        fftw_free(in_fftw);
+        fftw_free(out_fftw);
+        return;
+    }
+
     fftw_execute(plan);
 
     for (int i = 0; i < params.N; ++i) {
         out_fftw_graf[i] = (out_fftw[i][0])*(out_fftw[i][0]) + (out_fftw[i][1])*(out_fftw[i][1]);
         out_fftw_graf[i] = sqrt(out_fftw_graf[i]);
 
-        x[i] = (i < params.N/2) ? (i * params.fd / params.N) : ((i - params.N) * params.fd / params.N);
+        double df = static_cast<double>(params.fd) / params.N;
+        x[i] = (i < params.N/2) ? i * df : (i - params.N) * df;
     }
 
-    minY = out_fftw[0][0], maxY = out_fftw[0][0];
+    double minY = out_fftw_graf[0], maxY = out_fftw_graf[0];
     for (int i = 0; i < params.N; ++i){
         if (out_fftw_graf[i] < minY) minY = out_fftw_graf[i];
         else if (out_fftw_graf[i] > maxY) maxY = out_fftw_graf[i];
-        else { ; }
     }
 
-    /* my diff: there was a wrong attempt to display negative frequencies */
-    /* i deleted it, but probably we should make it right */
-
-    /* my diff: magic string was replaced with const */
     ui -> widget -> xAxis -> setLabel(X_AXIS_SPECTRUM_LABEL);
     ui -> widget -> xAxis -> setRange(-params.fd / 2, params.fd / 2);
     ui -> widget -> xAxis -> grid() -> setVisible(true);
@@ -163,269 +159,173 @@ void MainWindow::on_pbspectrum_clicked()
     fftw_free(out_fftw);
 }
 
-/* TODO: review */
 void MainWindow::on_pbwritefile_clicked()
 {
     qDebug() << "Writing file" << Qt::endl;
 
-    short result[2]; /* idk why there is "short". probably the other program needs it. */
-    /* i think we can do conditional compilation, but should we? */
+    params.loadFromSettings();
+    params.sanitize();
 
-    ui -> progressBar -> setMaximum(params.n2);
-    ui -> progressBar -> setMinimum(params.n1);
-    mode = ui -> comboBox -> currentIndex();
+    short result[2];
+
+    ui -> progressBar -> setRange(0, params.N - 1);
+    int mode = ui -> comboBox -> currentIndex();
 
     switch (mode) {
-        case CARRIER_MODE: {
-            /* my diff: updated magic string */
-            fileoutcarrier = fopen(CARRIER_MODE_RESULT_FILE_PATH, "w+b");
-
-            /* my diff: normal debug! */
-            if (fileoutcarrier == NULL) {
-                qDebug() << "Error during opening file";
+        case CARRIER_MODE:
+        {
+            FILE* f = fopen(CARRIER_MODE_RESULT_FILE_PATH, "w+b");
+            if (!f) {
+                qDebug() << "Error during opening " << CARRIER_MODE_RESULT_FILE_PATH << Qt::endl;
                 return;
             }
-            else {
-                qDebug() << "File opened correctly";
-            }
 
-            for (int i = params.n1; i <= params.n2; ++i) {
-                Re = params.A * (cos(2 * PI * params.f * i / params.fd));
-                Im = params.A * (sin(2 * PI * params.f * i / params.fd));
+            for (int i = 0; i < params.N; ++i) {
+                double arg = 2 * PI * params.f * (i + params.n1) / params.fd;
+                double re = params.A * cos(arg);
+                double im = params.A * sin(arg);
 
-                result[0] = Re;
-                result[1] = Im;
+                result[0] = re;
+                result[1] = im;
 
-                fwrite(result, sizeof(short), 2, fileoutcarrier);
+                size_t written = fwrite(result, sizeof(short), 2, f);
+                if (written != 2) {
+                    qDebug() << "Error during writting in carrier mode" << Qt::endl;
+                }
 
-                /* should be updated */
                 ui -> progressBar -> setValue(i);
             }
 
-            fclose(fileoutcarrier);
+            fclose(f);
             break;
         }
 
-        case FREQUENCY_MODE: {
-            /* my diff: maggicc striingg */
-            fileoutfsk = fopen(FREQUENCY_MODE_RESULT_FILE_PATH, "w+b");
-
-            /* my diff: normal debug again */
-            if (fileoutfsk == NULL) {
-                qDebug() << "Error during opening file";
+        case FREQUENCY_MODE:
+        {
+            FILE* f = fopen(FREQUENCY_MODE_RESULT_FILE_PATH, "w+b");
+            if (!f) {
+                qDebug() << "Error during opening " << FREQUENCY_MODE_RESULT_FILE_PATH << Qt::endl;
                 return;
             }
-            else {
-                qDebug() << "File opened correctly";
-            }
 
-            /* my diff: now using a dynamic array, `cause the size is unknown while compile */
-            /* also i shifted it in cases directly */
-            size_t size = params.N + 10;
-            short *inf_bit = new short[size];
+            QVector<short> inf_bit;
 
-            /* my diff: i guess it must shows the size of the inf_bit array, so */
-            qDebug() << "Size is " << size << Qt::endl;
-
-            /* my diff: k_rate was replaced with samples per symbol that calculating in params */
             params.recalcSamples();
 
-            /* my diff: srand added! absence of it was a big error btw */
-            srand(time(0));
-
-            /* my diff: now it`s normal switch-case with clear modes */
-            switch (params.meandr) {
-                /* here we must generate random bits */
-                case MEANDR_MODE_RANDOM: {
-                    /* running N times */
-                    /* filling inf_bit with random (from 0 to 1) value */
-                    /* when reaching samples per symbol limit -> generate new value */
-                    inf_bit[0] = rand() % 2; /* generating value between 0 and 2 - 1 (1) */
-                    for (int i = 1; i < params.N; ++i) {
-                        /* there was array with different indexing, where i was i + n1 */
-                        /* idk if it should be so */
-                        inf_bit[i /* + params.n1 */] = i % params.samplesPerSymbol == 0 ?
-                                                       rand() % 2 :
-                                                       inf_bit[i - 1 /* + params.n1 */];
+            inf_bit[0] = rand() % 2;
+            for (int i = 1; i < params.N; ++i) {
+                if (i % params.samplesPerSymbol == 0) {
+                    switch (params.meandr) {
+                    case MEANDR_MODE_RANDOM:
+                        inf_bit[i] = rand() % 2;
+                        break;
+                    case MEANDR_MODE_TOGGLE:
+                        inf_bit[i] = inf_bit[i - 1] ^ 1;
+                        break;
                     }
-
-                    break;
-                }
-
-                /* it`s easier: we`re alternate between 0 and 1 */
-                case MEANDR_MODE_TOGGLE: {
-                    /* my diff: there also was different indexing */
-                    inf_bit[0] = rand() % 2;
-                    for (int i = 1; i < params.N; ++i) {
-                        /* there was array with different indexing, where i was i + n1 */
-                        /* idk if it should be so */
-                        inf_bit[i /* + params.n1 */] = i % params.samplesPerSymbol == 0 ?
-                                                       ~inf_bit[i - 1 /* + params.n1 */] :
-                                                       inf_bit[i - 1 /* + params.n1 */];
-                    }
-
-                    break;
+                } else {
+                    inf_bit[i] = inf_bit[i - 1];
                 }
             }
 
-            for (int i = params.n1; i <= params.n2; ++i) {
-                switch (inf_bit[i]) {
-                    case 0:
-                        Re = params.A * (cos(2 * PI * (-params.df) * i / params.fd));
-                        Im = params.A * (sin(2 * PI * (-params.df) * i / params.fd));
-                        break;
-                    case 1:
-                        Re = params.A * (cos(2 * PI * params.df * i / params.fd));
-                        Im = params.A * (sin(2 * PI * params.df * i / params.fd));
-                        break;
-                    default:
-                        qDebug() << "Default case in frequency modulation";
-                        break;
+            for (int i = 0; i < params.N; ++i) {
+                double freq = inf_bit[i] == 0 ?
+                              params.f - params.df :
+                              params.f + params.df;
+                double arg = 2 * PI * freq * (i + params.n1) / params.fd;
+
+                double re = params.A * cos(arg);
+                double im = params.A * sin(arg);
+
+                result[0] = re;
+                result[1] = im;
+
+                size_t written = fwrite(result, sizeof(short), 2, f);
+                if (written != 2) {
+                    qDebug() << "Error during writting in frequency mode" << Qt::endl;
                 }
 
-                result[0]=Re;
-                result[1]=Im;
-
-                fwrite(result, sizeof(short), 2, fileoutfsk);
                 ui -> progressBar -> setValue(i);
             }
 
-            fclose(fileoutfsk);
+            fclose(f);
             break;
-        } /* third mode! didn`t u forget abdout that construction? `cause i did! */
+        }
 
-        case PHASE_MODE: {
-            fileout8psk = fopen(PHASE_MODE_RESULT_FILE_PATH, "w+b");
-
-            /* my diff: normal debug x3 */
-            if (fileout8psk == NULL) {
-                qDebug() << "Error during opening 8psk file";
+        case PHASE_MODE:
+        {
+            FILE* f = fopen(PHASE_MODE_RESULT_FILE_PATH, "w+b");
+            if (!f) {
+                qDebug() << "Error during opening " << PHASE_MODE_RESULT_FILE_PATH << Qt::endl;
                 return;
             }
-            else {
-                qDebug() << "File 8psk opened correctly";
-            }
 
-            /* my diff: now using a dynamic array, `cause the size is unknown while compile */
-            size_t size = params.N + 10;
-            short *inf_bit = new short[size];
+            QVector<short> inf_bit;
 
-            /* my diff: i guess it must shows the size of the inf_bit array, so */
-            qDebug() << "Size is " << size << Qt::endl;
+            params.recalcSamples();
 
-            k_rate = ((rate / 10) * 8); /* idk what is that for... */
-            k = 0; /* bruh, this strange one again */
-            if (params.meandr == 0) {
-                rnd = rand() % 8;
-                for (int i = params.n1; i <= params.n2; ++i) {
-                    inf_bit[i] = rnd;
-
-                    if(k == k_rate) {
-                        rnd = rand() % 8;
-                        k = 0;
+            inf_bit[0] = rand() % 8;
+            for (int i = 1; i < params.N; ++i) {
+                if (i % params.samplesPerSymbol == 0) {
+                    switch (params.meandr) {
+                    case MEANDR_MODE_RANDOM:
+                        inf_bit[i] = rand() % 8;
+                        break;
+                    case MEANDR_MODE_TOGGLE:
+                        inf_bit[i] = (inf_bit[i - 1] + 1) % 8;
+                        break;
                     }
-                    else {
-                        ++k;
-                    }
-                }
-            }
-            else {
-                for(int i = params.n1; i <= params.n2; ++i) {
-                    inf_bit[i] = rnd;
-
-                    if (k == k_rate) {
-                        ++rnd;
-
-                        if(rnd == 8) rnd = 0;
-
-                        k = 0;
-                    }
-                    else {
-                        ++k;
-                    }
+                } else {
+                    inf_bit[i] = inf_bit[i - 1];
                 }
             }
 
-            // int rnd[N+10];
-            for (i=n1;i<=n2;i++){
-            //    rnd[i]=rand()%8;/*os[n].digitValue()
-                /* WHATA HEEELL */
-                switch(inf_bit[i]){
-                    case 0:
-                        Re = A* (cos(0));
-                        Im = A* (sin(0));
-                    break;
-                    case 1:
-                        Re = A* (cos(PI/4));
-                        Im = A* (sin(PI/4));
-                    break;
-                    case 2:
-                        Re = A* (cos(PI/2));
-                        Im = A* (sin(PI/2));
-                    break;
-                    case 3:
-                        Re = A* (cos(3*PI/4));
-                        Im = A* (sin(3*PI/4));
-                    break;
-                    case 4:
-                        Re = A* (cos(PI));
-                        Im = A* (sin(PI));
-                    break;
-                    case 5:
-                        Re = A* (cos(5*PI/4));
-                        Im = A* (sin(5*PI/4));
-                    break;
-                    case 6:
-                        Re = A* (cos(3*PI/2));
-                        Im = A* (sin(3*PI/2));
-                    break;
-                    case 7:
-                        Re = A* (cos(7*PI/4));
-                        Im = A* (sin(7*PI/4));
-                    break;
-                    default:
-                        qDebug()<<"error generating random numbers";
-                    break;
-                }
-                result[0]=Re;
-                result[1]=Im;
-                ui->progressBar->setValue(i);
-                if (fileout8psk == NULL){
-                    qDebug() << "error opening 8psk";
-                }
-                else{
-                    fwrite(result, sizeof(short), 2, fileout8psk);
+            for (int i = 0; i < params.N; ++i) {
+                double re = params.A * cos(PHASES[inf_bit[i] % PHASES_COUNT]);
+                double im = params.A * sin(PHASES[inf_bit[i] % PHASES_COUNT]);
+
+                result[0] = re;
+                result[1] = im;
+
+                ui -> progressBar -> setValue(i);
+
+                size_t written = fwrite(result, sizeof(short), 2, f);
+                if (written != 2) {
+                    qDebug() << "Error during writting in phase mode" << Qt::endl;
                 }
             }
-            fclose(fileout8psk);
+
+            fclose(f);
             break;
         }
 
         default:
             qDebug() << "Default case in modes" << Qt::endl;
-            break;
+            return;
     }
 }
 
-/* TODO: review */
+/* TODO: enum */
 void MainWindow::on_pbremovefile_clicked()
 {
-    qDebug() << "remove files clicked";
-    mode=ui->comboBox->currentIndex();
-    switch(mode){
-    case 0:
-        remove("resultcarrier.dat");
-        break;
-    case 1:
-        remove("resultfsk.dat");
-        break;
-    case 2:
-        remove("result8psk.dat");
-        break;
-    default:
-        qDebug() << "case error";
-        break;
-        qDebug() << "removed files";
+    qDebug() << "Removing files" << Qt::endl;
+
+    int mode = ui -> comboBox -> currentIndex();
+
+    /* it is posible to replace it with enum indexing */
+    switch (mode) {
+        case CARRIER_MODE:
+            remove(CARRIER_MODE_RESULT_FILE_PATH);
+            break;
+        case FREQUENCY_MODE:
+            remove(FREQUENCY_MODE_RESULT_FILE_PATH);
+            break;
+        case PHASE_MODE:
+            remove(PHASE_MODE_RESULT_FILE_PATH);
+            break;
+        default:
+            qDebug() << "Removing file case default" << Qt::endl;;
+            break;
     }
 }
 
@@ -441,6 +341,5 @@ void MainWindow::on_pbclean_clicked()
 void MainWindow::on_pbclose_clicked()
 {
     qDebug() << "Closing" << Qt::endl;
-
     close();
 }

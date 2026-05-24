@@ -18,15 +18,6 @@ class MainWindow : public QMainWindow
     public:
         explicit MainWindow(QWidget *parent = 0);
         ~MainWindow();
-        SignalParams params;
-        double Xt, Re, Im;
-        int mode;
-        FILE* fileoutcarrier;
-        FILE* fileoutfsk;
-        FILE* fileout8psk;
-        QString os;
-
-// int rnd[n];
 
     private slots:
         void on_pbtime_clicked();
@@ -38,6 +29,5 @@ class MainWindow : public QMainWindow
 
     private:
         Ui::MainWindow *ui;
-        QString file_name;
-        double minY, maxY;
+        SignalParams params;
 };

@@ -1,0 +1,466 @@
+#include "mainwindow.h"
+#include "ui_mainwindow.h"
+#include "qcustomplot.h"
+#include <QSettings>
+#include <QVariant>
+#include <QDebug>
+#include <stdio.h>
+#include <stdlib.h>
+#include <QMainWindow>
+#include <QString>
+
+using namespace std;
+
+const QString WINDOW_TITLE = "Modulation of signal";
+const QString X_AXIS_TIME_LABEL = "Real is blue, Imaginary is red";
+const QString X_AXIS_SPECTRUM_LABEL = "Spectrum line";
+const QString Y_AXIS_LABEL = "A";
+
+const char *CARRIER_MODE_RESULT_FILE_PATH = "resultcarrier.dat";
+const char *FREQUENCY_MODE_RESULT_FILE_PATH = "resultfsk.dat";
+const char *PHASE_MODE_RESULT_FILE_PATH = "result8psk.dat";
+
+const int CARRIER_MODE = 0;
+const int FREQUENCY_MODE = 1;
+const int PHASE_MODE = 2;
+
+const double PI = acos(-1.0);
+
+
+MainWindow::MainWindow(QWidget *parent) :
+    QMainWindow(parent),
+    ui(new Ui::MainWindow)
+{
+    ui -> setupUi(this);
+    ui -> progressBar -> setValue(0);
+    /* my diff: magic string was replaced with const QString */
+    this -> setWindowTitle(WINDOW_TITLE);
+    /* my diff: srand added! absence of it was a big error btw */
+    srand(time(0));
+}
+
+MainWindow::~MainWindow()
+{
+    delete ui;
+}
+
+/* my diff: now there is 2 buttons to 2 distinct functions */
+void MainWindow::on_pbtime_clicked()
+{
+    /* my diff: updated debug message */
+    qDebug() << "Plotting a graph" << Qt::endl;
+
+    /* my diff: now params is a struct! */
+    params.loadFromSettings();
+    params.sanitize();
+
+    /* my diff: clear! */
+    ui -> widget -> clearGraphs();
+
+    /* vectors for plotting the graph */
+    /* x is an index on OX axis (can be considered as time */
+    /* re is a common-mode component (OY axis, blue) */
+    /* im is a quadrature component (OY axis, red) */
+    QVector<double> x(params.N), re(params.N), im(params.N);
+
+    /* my diff: fixed strange cycle */
+    /* also now PI is a const! */
+    for (int i = 0; i < params.N; ++i) {
+        int X = params.n1 + i;
+        x[i] = X;
+        re[i] = params.A * (cos(2 * PI * params.f * X / params.fd));
+        im[i] = params.A * (sin(2 * PI * params.f * X / params.fd));
+    }
+
+    /* setting min and max y for OY axis */
+    /* my diff: two distinct cycles was united */
+    minY = re[0], maxY = re[0];
+    for (int i = 1; i < params.N; ++i) {
+        if (re[i] < minY) minY = re[i];
+        else if (re[i] > maxY) maxY = re[i];
+        else { ; }
+
+        if (im[i] < minY) minY = im[i];
+        else if (im[i] > maxY) maxY = im[i];
+        else { ; }
+    }
+
+    ui -> widget -> xAxis -> setLabel(X_AXIS_TIME_LABEL);
+    ui -> widget -> xAxis -> setRange(params.n1, params.n2);
+
+    ui -> widget -> yAxis -> setLabel(Y_AXIS_LABEL);
+    /* my diff: method "rescale axis" was deleted, because we`re setting it manually */
+    ui -> widget -> yAxis -> setRange(minY, maxY);
+
+    ui -> widget -> addGraph();
+    ui -> widget -> graph(0) -> setData(x, re);
+    ui -> widget -> graph(0) -> setPen(QPen(Qt::blue));
+
+    ui -> widget -> addGraph();
+    ui -> widget -> graph(1) -> setData(x, im);
+    ui -> widget -> graph(1) -> setPen(QPen(Qt::red));
+
+    ui -> widget -> replot();
+}
+
+void MainWindow::on_pbspectrum_clicked()
+{
+    qDebug() << "Spectrum chart";
+
+    params.loadFromSettings();
+    params.sanitize();
+
+    ui -> widget -> clearGraphs();
+
+    QVector<double> out_fftw_graf(params.N);
+    QVector<double> x(params.N);
+    fftw_complex *in_fftw, *out_fftw;
+    fftw_plan plan;
+
+    in_fftw = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * params.N);
+    out_fftw = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * params.N);
+
+    for (int i = 0; i < params.N; ++i) {
+        int X = params.n1 + i;
+        in_fftw[i][0] = params.A * (cos(2 * PI * params.f * X / params.fd));
+        in_fftw[i][1] = params.A * (sin(2 * PI * params.f * X / params.fd));
+    }
+
+    plan = fftw_plan_dft_1d(params.N, in_fftw, out_fftw, FFTW_FORWARD, FFTW_ESTIMATE);
+    fftw_execute(plan);
+
+    for (int i = 0; i < params.N; ++i) {
+        out_fftw_graf[i] = (out_fftw[i][0])*(out_fftw[i][0]) + (out_fftw[i][1])*(out_fftw[i][1]);
+        out_fftw_graf[i] = sqrt(out_fftw_graf[i]);
+
+        x[i] = (i < params.N/2) ? (i * params.fd / params.N) : ((i - params.N) * params.fd / params.N);
+    }
+
+    minY = out_fftw[0][0], maxY = out_fftw[0][0];
+    for (int i = 0; i < params.N; ++i){
+        if (out_fftw_graf[i] < minY) minY = out_fftw_graf[i];
+        else if (out_fftw_graf[i] > maxY) maxY = out_fftw_graf[i];
+        else { ; }
+    }
+
+    /* my diff: there was a wrong attempt to display negative frequencies */
+    /* i deleted it, but probably we should make it right */
+
+    /* my diff: magic string was replaced with const */
+    ui -> widget -> xAxis -> setLabel(X_AXIS_SPECTRUM_LABEL);
+    ui -> widget -> xAxis -> setRange(-params.fd / 2, params.fd / 2);
+    ui -> widget -> xAxis -> grid() -> setVisible(true);
+
+    ui -> widget -> yAxis -> setLabel(Y_AXIS_LABEL);
+    ui -> widget -> yAxis -> setRange(minY, maxY);
+
+    ui -> widget -> addGraph();
+    ui -> widget -> graph(0) -> setData(x, out_fftw_graf);
+    ui -> widget -> graph(0) -> setPen(QPen(Qt::red));
+
+    ui -> widget -> replot();
+
+    fftw_destroy_plan(plan);
+    fftw_free(in_fftw);
+    fftw_free(out_fftw);
+}
+
+/* bool MainWindow::writeIQToFile(const char* path, function<void(int, short&, short&)> generateSample)
+{
+    FILE* file = fopen(path, "w+b");
+    if (!file) return false;
+
+    short result[2];
+    for (int i = 0; i < params.N; ++i) {
+        short re, im;
+        generateSample(i, re, im);
+        result[0] = re;
+        result[1] = im;
+        fwrite(result, sizeof(short), 2, file);
+        ui -> progressBar -> setValue(i);
+    }
+
+    fclose(file);
+    return true;
+} */
+
+/* TODO: review */
+void MainWindow::on_pbwritefile_clicked()
+{
+    qDebug() << "Writing file" << Qt::endl;
+
+    short result[2]; /* idk why there is "short". probably the other program needs it. */
+    /* i think we can do conditional compilation, but should we? */
+
+    /* my diff: replaced strange progress bar settings with this one */
+    ui -> progressBar -> setRange(0, params.N - 1);
+    mode = ui -> comboBox -> currentIndex();
+
+    /* my diff: now it`s readable */
+    switch (mode) {
+        case CARRIER_MODE: {
+            /* my diff: now it`s separated method */
+            /*writeIQToFile(CARRIER_MODE_RESULT_FILE_PATH, [this](int i, short& re, short& im) {
+                double arg = 2 * PI * params.f * (i + params.n1) / params.fd;
+                re = params.A * cos(arg);
+                im = params.A * sin(arg);
+            });*/
+
+            FILE* f = fopen(CARRIER_MODE_RESULT_FILE_PATH, "w+b");
+            if (!f) {
+                qDebug() << "Error during opening " << CARRIER_MODE_RESULT_FILE_PATH << Qt::endl;
+                return;
+            }
+            else { ; }
+
+            for (int i = 0; i < params.N; ++i) {
+
+            }
+
+            break;
+        }
+
+        case FREQUENCY_MODE: {
+            /* my diff: maggicc striingg */
+            fileoutfsk = fopen(FREQUENCY_MODE_RESULT_FILE_PATH, "w+b");
+
+            /* my diff: normal debug again */
+            if (fileoutfsk == NULL) {
+                qDebug() << "Error during opening file";
+                return;
+            }
+            else {
+                qDebug() << "File opened correctly";
+            }
+
+            /* my diff: now using a dynamic array, `cause the size is unknown while compile */
+            /* also i shifted it in cases directly */
+            size_t size = params.N + 10;
+            short *inf_bit = new short[size];
+
+            /* my diff: i guess it must shows the size of the inf_bit array, so */
+            qDebug() << "Size is " << size << Qt::endl;
+
+            /* my diff: k_rate was replaced with samples per symbol that calculating in params */
+            params.recalcSamples();
+
+            /* my diff: now it`s normal switch-case with clear modes */
+            switch (params.meandr) {
+                /* here we must generate random bits */
+                case MEANDR_MODE_RANDOM: {
+                    /* running N times */
+                    /* filling inf_bit with random (from 0 to 1) value */
+                    /* when reaching samples per symbol limit -> generate new value */
+                    inf_bit[0] = rand() % 2; /* generating value between 0 and 2 - 1 (1) */
+                    for (int i = 1; i < params.N; ++i) {
+                        /* there was array with different indexing, where i was i + n1 */
+                        /* idk if it should be so */
+                        inf_bit[i /* + params.n1 */] = i % params.samplesPerSymbol == 0 ?
+                                                       rand() % 2 :
+                                                       inf_bit[i - 1 /* + params.n1 */];
+                    }
+
+                    break;
+                }
+
+                /* it`s easier: we`re alternate between 0 and 1 */
+                case MEANDR_MODE_TOGGLE: {
+                    /* my diff: there also was different indexing */
+                    inf_bit[0] = rand() % 2;
+                    for (int i = 1; i < params.N; ++i) {
+                        /* there was array with different indexing, where i was i + n1 */
+                        /* idk if it should be so */
+                        inf_bit[i /* + params.n1 */] = i % params.samplesPerSymbol == 0 ?
+                                                       inf_bit[i - 1 /* + params.n1 */] ^ 1 :
+                                                       inf_bit[i - 1 /* + params.n1 */];
+                    }
+
+                    break;
+                }
+            }
+
+            writeIQToFile(CARRIER_MODE_RESULT_FILE_PATH, [this](int i, short& re, short& im) {
+                double arg = 2 * PI * params.f * (i + params.n1) / params.fd;
+                re = params.A * cos(arg);
+                im = params.A * sin(arg);
+            });
+
+            for (int i = 0; i < params.N; ++i) {
+
+                switch (inf_bit[i]) {
+                    case 0:
+                        Re = params.A * (cos(2 * PI * (params.f - params.df) * (i + params.n1) / params.fd));
+                        Im = params.A * (sin(2 * PI * (params.f - params.df) * (i + params.n1) / params.fd));
+                        break;
+                    case 1:
+                        Re = params.A * (cos(2 * PI * (params.f + params.df) * (i + params.n1) / params.fd));
+                        Im = params.A * (sin(2 * PI * (params.f + params.df) * (i + params.n1) / params.fd));
+                        break;
+                    default:
+                        qDebug() << "Default case in frequency modulation";
+                        break;
+                }
+
+                result[0]=Re;
+                result[1]=Im;
+
+                fwrite(result, sizeof(short), 2, fileoutfsk);
+                ui -> progressBar -> setValue(i);
+            }
+
+            fclose(fileoutfsk);
+            delete[] inf_bit;
+            break;
+        }
+
+        case PHASE_MODE: {
+            fileout8psk = fopen(PHASE_MODE_RESULT_FILE_PATH, "w+b");
+
+            /* my diff: normal debug x3 */
+            if (fileout8psk == NULL) {
+                qDebug() << "Error during opening 8psk file";
+                return;
+            }
+            else {
+                qDebug() << "File 8psk opened correctly";
+            }
+
+            /* my diff: now using a dynamic array, `cause the size is unknown while compile */
+            size_t size = params.N + 10;
+            short *inf_bit = new short[size];
+
+            /* my diff: i guess it must shows the size of the inf_bit array, so */
+            qDebug() << "Size is " << size << Qt::endl;
+
+            k_rate = ((rate / 10) * 8); /* idk what is that for... */
+            k = 0; /* bruh, this strange one again */
+            if (params.meandr == 0) {
+                rnd = rand() % 8;
+                for (int i = params.n1; i <= params.n2; ++i) {
+                    inf_bit[i] = rnd;
+
+                    if(k == k_rate) {
+                        rnd = rand() % 8;
+                        k = 0;
+                    }
+                    else {
+                        ++k;
+                    }
+                }
+            }
+            else {
+                for(int i = params.n1; i <= params.n2; ++i) {
+                    inf_bit[i] = rnd;
+
+                    if (k == k_rate) {
+                        ++rnd;
+
+                        if(rnd == 8) rnd = 0;
+
+                        k = 0;
+                    }
+                    else {
+                        ++k;
+                    }
+                }
+            }
+
+            // int rnd[N+10];
+            for (i=n1;i<=n2;i++){
+            //    rnd[i]=rand()%8;/*os[n].digitValue()
+                /* WHATA HEEELL */
+                switch(inf_bit[i]){
+                    case 0:
+                        Re = A* (cos(0));
+                        Im = A* (sin(0));
+                    break;
+                    case 1:
+                        Re = A* (cos(PI/4));
+                        Im = A* (sin(PI/4));
+                    break;
+                    case 2:
+                        Re = A* (cos(PI/2));
+                        Im = A* (sin(PI/2));
+                    break;
+                    case 3:
+                        Re = A* (cos(3*PI/4));
+                        Im = A* (sin(3*PI/4));
+                    break;
+                    case 4:
+                        Re = A* (cos(PI));
+                        Im = A* (sin(PI));
+                    break;
+                    case 5:
+                        Re = A* (cos(5*PI/4));
+                        Im = A* (sin(5*PI/4));
+                    break;
+                    case 6:
+                        Re = A* (cos(3*PI/2));
+                        Im = A* (sin(3*PI/2));
+                    break;
+                    case 7:
+                        Re = A* (cos(7*PI/4));
+                        Im = A* (sin(7*PI/4));
+                    break;
+                    default:
+                        qDebug()<<"error generating random numbers";
+                    break;
+                }
+                result[0]=Re;
+                result[1]=Im;
+                ui->progressBar->setValue(i);
+                if (fileout8psk == NULL){
+                    qDebug() << "error opening 8psk";
+                }
+                else{
+                    fwrite(result, sizeof(short), 2, fileout8psk);
+                }
+            }
+            fclose(fileout8psk);
+            break;
+        }
+
+        default:
+            qDebug() << "Default case in modes" << Qt::endl;
+            break;
+    }
+}
+
+/* TODO: enum */
+void MainWindow::on_pbremovefile_clicked()
+{
+    qDebug() << "Removing files" << Qt::endl;
+
+    mode = ui -> comboBox -> currentIndex();
+
+    /* it is posible to replace it with enum indexing */
+    switch (mode) {
+        case CARRIER_MODE:
+            remove(CARRIER_MODE_RESULT_FILE_PATH);
+            break;
+        case FREQUENCY_MODE:
+            remove(FREQUENCY_MODE_RESULT_FILE_PATH);
+            break;
+        case PHASE_MODE:
+            remove(PHASE_MODE_RESULT_FILE_PATH);
+            break;
+        default:
+            qDebug() << "Removing file case default" << Qt::endl;;
+            break;
+    }
+}
+
+void MainWindow::on_pbclean_clicked()
+{
+    qDebug() << "Cleaning" << Qt::endl;
+
+    ui -> widget -> clearPlottables();
+    ui -> widget -> replot();
+    ui -> progressBar -> setValue(0);
+}
+
+void MainWindow::on_pbclose_clicked()
+{
+    qDebug() << "Closing" << Qt::endl;
+    close();
+}
