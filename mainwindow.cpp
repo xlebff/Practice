@@ -4,10 +4,11 @@
 #include <QSettings>
 #include <QVariant>
 #include <QDebug>
-#include <stdio.h>
-#include <stdlib.h>
 #include <QMainWindow>
 #include <QString>
+#include <QMessageBox>
+#include <stdio.h>
+#include <stdlib.h>
 #include <ctime>
 
 using namespace std;
@@ -29,8 +30,6 @@ const double PI = acos(-1.0);
 const int PHASES_COUNT = 8;
 const double PHASES[PHASES_COUNT] = {(0), (PI / 4), (PI / 2), (3 * PI / 4),
                                      (PI), (5 * PI / 4), (3 * PI / 2), (7 * PI / 4)};
-
-enum class ModulationMode { CARRIER, FREQUENCY, PHASE }; /* TODO */
 
 
 MainWindow::MainWindow(QWidget *parent) :
@@ -54,7 +53,7 @@ void MainWindow::on_pbtime_clicked()
     qDebug() << "Plotting a graph" << Qt::endl;
 
     params.loadFromSettings();
-    params.sanitize();
+    params.sanitize(this);
 
     ui -> widget -> clearGraphs();
 
@@ -67,7 +66,8 @@ void MainWindow::on_pbtime_clicked()
         im[i] = params.A * (sin(2 * PI * params.f * X / params.fd));
     }
 
-    double minY = re[0], maxY = re[0];
+    double minY = qMin(re[0], im[0]);
+    double maxY = qMax(re[0], im[0]);
     for (int i = 1; i < params.N; ++i) {
         if (re[i] < minY) minY = re[i];
         else if (re[i] > maxY) maxY = re[i];
@@ -98,7 +98,7 @@ void MainWindow::on_pbspectrum_clicked()
     qDebug() << "Spectrum chart";
 
     params.loadFromSettings();
-    params.sanitize();
+    params.sanitize(this);
 
     ui -> widget -> clearGraphs();
 
@@ -106,10 +106,16 @@ void MainWindow::on_pbspectrum_clicked()
     fftw_complex *in_fftw, *out_fftw;
     fftw_plan plan;
 
-    do {
-        in_fftw = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * params.N);
-        out_fftw = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * params.N);
-    } while (!in_fftw || !out_fftw);
+    in_fftw = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * params.N);
+    out_fftw = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * params.N);
+
+    if (!in_fftw || !out_fftw) {
+        QMessageBox::critical(this, "Error", "Error during memory allocation");
+        qDebug() << "Error during memory allocation: " << Qt::endl <<
+            "In FFTW: " << in_fftw << ";" << Qt::endl <<
+            "Out FFTW: " << out_fftw << Qt::endl;
+        return;
+    }
 
     for (int i = 0; i < params.N; ++i) {
         double arg = 2 * PI * params.f * (i + params.n1) / params.fd;
@@ -119,7 +125,7 @@ void MainWindow::on_pbspectrum_clicked()
 
     plan = fftw_plan_dft_1d(params.N, in_fftw, out_fftw, FFTW_FORWARD, FFTW_ESTIMATE);
     if (!plan) {
-        qDebug() << "FFTW plan creation failed";
+        QMessageBox::critical(this, "Error", "FFTW plan creation failed");
         fftw_free(in_fftw);
         fftw_free(out_fftw);
         return;
@@ -164,7 +170,7 @@ void MainWindow::on_pbwritefile_clicked()
     qDebug() << "Writing file" << Qt::endl;
 
     params.loadFromSettings();
-    params.sanitize();
+    params.sanitize(this);
 
     short result[2];
 
@@ -172,147 +178,151 @@ void MainWindow::on_pbwritefile_clicked()
     int mode = ui -> comboBox -> currentIndex();
 
     switch (mode) {
-        case CARRIER_MODE:
-        {
-            FILE* f = fopen(CARRIER_MODE_RESULT_FILE_PATH, "w+b");
-            if (!f) {
-                qDebug() << "Error during opening " << CARRIER_MODE_RESULT_FILE_PATH << Qt::endl;
-                return;
-            }
-
-            for (int i = 0; i < params.N; ++i) {
-                double arg = 2 * PI * params.f * (i + params.n1) / params.fd;
-                double re = params.A * cos(arg);
-                double im = params.A * sin(arg);
-
-                result[0] = re;
-                result[1] = im;
-
-                size_t written = fwrite(result, sizeof(short), 2, f);
-                if (written != 2) {
-                    qDebug() << "Error during writting in carrier mode" << Qt::endl;
-                }
-
-                ui -> progressBar -> setValue(i);
-            }
-
-            fclose(f);
-            break;
-        }
-
-        case FREQUENCY_MODE:
-        {
-            FILE* f = fopen(FREQUENCY_MODE_RESULT_FILE_PATH, "w+b");
-            if (!f) {
-                qDebug() << "Error during opening " << FREQUENCY_MODE_RESULT_FILE_PATH << Qt::endl;
-                return;
-            }
-
-            QVector<short> inf_bit;
-
-            params.recalcSamples();
-
-            inf_bit[0] = rand() % 2;
-            for (int i = 1; i < params.N; ++i) {
-                if (i % params.samplesPerSymbol == 0) {
-                    switch (params.meandr) {
-                    case MEANDR_MODE_RANDOM:
-                        inf_bit[i] = rand() % 2;
-                        break;
-                    case MEANDR_MODE_TOGGLE:
-                        inf_bit[i] = inf_bit[i - 1] ^ 1;
-                        break;
-                    }
-                } else {
-                    inf_bit[i] = inf_bit[i - 1];
-                }
-            }
-
-            for (int i = 0; i < params.N; ++i) {
-                double freq = inf_bit[i] == 0 ?
-                              params.f - params.df :
-                              params.f + params.df;
-                double arg = 2 * PI * freq * (i + params.n1) / params.fd;
-
-                double re = params.A * cos(arg);
-                double im = params.A * sin(arg);
-
-                result[0] = re;
-                result[1] = im;
-
-                size_t written = fwrite(result, sizeof(short), 2, f);
-                if (written != 2) {
-                    qDebug() << "Error during writting in frequency mode" << Qt::endl;
-                }
-
-                ui -> progressBar -> setValue(i);
-            }
-
-            fclose(f);
-            break;
-        }
-
-        case PHASE_MODE:
-        {
-            FILE* f = fopen(PHASE_MODE_RESULT_FILE_PATH, "w+b");
-            if (!f) {
-                qDebug() << "Error during opening " << PHASE_MODE_RESULT_FILE_PATH << Qt::endl;
-                return;
-            }
-
-            QVector<short> inf_bit;
-
-            params.recalcSamples();
-
-            inf_bit[0] = rand() % 8;
-            for (int i = 1; i < params.N; ++i) {
-                if (i % params.samplesPerSymbol == 0) {
-                    switch (params.meandr) {
-                    case MEANDR_MODE_RANDOM:
-                        inf_bit[i] = rand() % 8;
-                        break;
-                    case MEANDR_MODE_TOGGLE:
-                        inf_bit[i] = (inf_bit[i - 1] + 1) % 8;
-                        break;
-                    }
-                } else {
-                    inf_bit[i] = inf_bit[i - 1];
-                }
-            }
-
-            for (int i = 0; i < params.N; ++i) {
-                double re = params.A * cos(PHASES[inf_bit[i] % PHASES_COUNT]);
-                double im = params.A * sin(PHASES[inf_bit[i] % PHASES_COUNT]);
-
-                result[0] = re;
-                result[1] = im;
-
-                ui -> progressBar -> setValue(i);
-
-                size_t written = fwrite(result, sizeof(short), 2, f);
-                if (written != 2) {
-                    qDebug() << "Error during writting in phase mode" << Qt::endl;
-                }
-            }
-
-            fclose(f);
-            break;
-        }
-
-        default:
-            qDebug() << "Default case in modes" << Qt::endl;
+    case CARRIER_MODE:
+    {
+        FILE* f = fopen(CARRIER_MODE_RESULT_FILE_PATH, "w+b");
+        if (!f) {
+            QMessageBox::critical(this, "Error", "Error during opening carrier mode result file");
+            qDebug() << "Error during opening " << CARRIER_MODE_RESULT_FILE_PATH << Qt::endl;
             return;
+        }
+
+        for (int i = 0; i < params.N; ++i) {
+            double arg = 2 * PI * params.f * (i + params.n1) / params.fd;
+            double re = params.A * cos(arg);
+            double im = params.A * sin(arg);
+
+            result[0] = re;
+            result[1] = im;
+
+            size_t written = fwrite(result, sizeof(short), 2, f);
+            if (written != 2) {
+                QMessageBox::warning(this, "Error", "Error during writting in carrier mode");
+                qDebug() << "Error during writting in carrier mode" << Qt::endl;
+            }
+
+            ui -> progressBar -> setValue(i);
+        }
+
+        fclose(f);
+        break;
+    }
+
+    case FREQUENCY_MODE:
+    {
+        FILE* f = fopen(FREQUENCY_MODE_RESULT_FILE_PATH, "w+b");
+        if (!f) {
+            QMessageBox::critical(this, "Error", "Error during opening frequency mode result file");
+            qDebug() << "Error during opening " << FREQUENCY_MODE_RESULT_FILE_PATH << Qt::endl;
+            return;
+        }
+
+        QVector<short> inf_bit(params.N);
+
+        params.recalcSamples();
+
+        inf_bit[0] = rand() % 2;
+        for (int i = 1; i < params.N; ++i) {
+            if (i % params.samplesPerSymbol == 0) {
+                switch (params.meandr) {
+                case MEANDR_MODE_RANDOM:
+                    inf_bit[i] = rand() % 2;
+                    break;
+                case MEANDR_MODE_TOGGLE:
+                    inf_bit[i] = inf_bit[i - 1] ^ 1;
+                    break;
+                }
+            } else {
+                inf_bit[i] = inf_bit[i - 1];
+            }
+        }
+
+        for (int i = 0; i < params.N; ++i) {
+            double freq = inf_bit[i] == 0 ?
+                          params.f - params.df :
+                          params.f + params.df;
+            double arg = 2 * PI * freq * (i + params.n1) / params.fd;
+
+            double re = params.A * cos(arg);
+            double im = params.A * sin(arg);
+
+            result[0] = re;
+            result[1] = im;
+
+            size_t written = fwrite(result, sizeof(short), 2, f);
+            if (written != 2) {
+                QMessageBox::warning(this, "Warning", "Error during writting in frequency mode");
+                qDebug() << "Error during writting in frequency mode" << Qt::endl;
+            }
+
+            ui -> progressBar -> setValue(i);
+        }
+
+        fclose(f);
+        break;
+    }
+
+    case PHASE_MODE:
+    {
+        FILE* f = fopen(PHASE_MODE_RESULT_FILE_PATH, "w+b");
+        if (!f) {
+            QMessageBox::critical(this, "Error", "Error during opening phase mode result file");
+            qDebug() << "Error during opening " << PHASE_MODE_RESULT_FILE_PATH << Qt::endl;
+            return;
+        }
+
+        QVector<short> inf_bit(params.N);
+
+        params.recalcSamples();
+
+        inf_bit[0] = rand() % 8;
+        for (int i = 1; i < params.N; ++i) {
+            if (i % params.samplesPerSymbol == 0) {
+                switch (params.meandr) {
+                case MEANDR_MODE_RANDOM:
+                    inf_bit[i] = rand() % 8;
+                    break;
+                case MEANDR_MODE_TOGGLE:
+                    inf_bit[i] = (inf_bit[i - 1] + 1) % 8;
+                    break;
+                }
+            } else {
+                inf_bit[i] = inf_bit[i - 1];
+            }
+        }
+
+        for (int i = 0; i < params.N; ++i) {
+            double re = params.A * cos(PHASES[inf_bit[i] % PHASES_COUNT]);
+            double im = params.A * sin(PHASES[inf_bit[i] % PHASES_COUNT]);
+
+            result[0] = re;
+            result[1] = im;
+
+            ui -> progressBar -> setValue(i);
+
+            size_t written = fwrite(result, sizeof(short), 2, f);
+            if (written != 2) {
+                QMessageBox::warning(this, "Warning", "Error during writting in phase mode");
+                qDebug() << "Error during writting in phase mode" << Qt::endl;
+            }
+        }
+
+        fclose(f);
+        break;
+    }
+
+    default:
+        qDebug() << "Default case in modes" << Qt::endl;
+        return;
     }
 }
 
-/* TODO: enum */
 void MainWindow::on_pbremovefile_clicked()
 {
     qDebug() << "Removing files" << Qt::endl;
 
     int mode = ui -> comboBox -> currentIndex();
 
-    /* it is posible to replace it with enum indexing */
     switch (mode) {
         case CARRIER_MODE:
             remove(CARRIER_MODE_RESULT_FILE_PATH);

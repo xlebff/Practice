@@ -4,6 +4,7 @@
 #include <QDebug>
 #include <QString>
 #include <QFile>
+#include <QMessageBox>
 
 const int A_DEFAULT = 100;
 const int F_DEFAULT = 10;
@@ -74,51 +75,52 @@ struct SignalParams {
     {
         /* my diff: replaced k_rate */
         samplesPerSymbol = fd / rate;
-        /* aand validation */
-        if (samplesPerSymbol < 1) samplesPerSymbol = 1;
+        if (samplesPerSymbol < 1) {
+            samplesPerSymbol = 1;
+        }
 
-        /* aand debug */
         qDebug() << "Rate is " << rate << Qt::endl;
         qDebug() << samplesPerSymbol << " samples per symbol" << Qt::endl;
     }
 
-    void sanitize()
-    {
-        normalize(A, A_MIN, A_MAX, "A");
-        normalize(fd, FD_MIN, FD_MAX, "Fd");
-        normalize(f, F_MIN, fd / 2, "F");
-        normalize(n1, N1_MIN, N1_MAX, "N1");
-        normalize(n2, N2_MIN + n1, N2_MAX, "N2");
-        normalize(df, DF_MIN, fd / 2, "Df");
-        normalize(rate, RATE_MIN, fd / 2, "Rate");
-        normalize(meandr, MEANDR_MIN, MEANDR_MAX, "Meandr");
-
-        recalcN();
-
-        if (N <= 0) {
-            qDebug() << "Error during calculating N!" << Qt::endl;
-            exit(1);
-        }
-
-        if (rate > fd) {
-            rate = fd;
-            qDebug() << "Rate reduced to fd" << Qt::endl;
-        }
-    }
-
-    /* my diff: method for normalize params. was updated and now shows what var was fixed. */
-    /* also i think it has to show debug in the widget */
-    void normalize(int &val, const int min, const int max, const QString name)
+    void normalize(QWidget *window, int &val, const int min, const int max, const QString name)
     {
         if (val < min) {
             val = min;
+            QMessageBox::warning(window, "Warning", name + " was to low and was normalized to " + min);
             qDebug() << name << " must be greater than " <<
                 min << ". Value was normalized." << Qt::endl;
         }
         else if (val > max) {
             val = max;
+            QMessageBox::warning(window, "Warning", name + " was to low and was normalized to " + max);
             qDebug() << name << " must be less than " <<
                 max << ". Value was normalized" << Qt::endl;
+        }
+    }
+
+    void sanitize(QWidget *window)
+    {
+        normalize(window, A, A_MIN, A_MAX, "A");
+        normalize(window, fd, FD_MIN, FD_MAX, "Fd");
+        normalize(window, f, F_MIN, fd / 2, "F");
+        normalize(window, n1, N1_MIN, N1_MAX, "N1");
+        normalize(window, n2, N2_MIN + n1, N2_MAX, "N2");
+        normalize(window, df, DF_MIN, fd / 2, "Df");
+        normalize(window, rate, RATE_MIN, fd / 2, "Rate");
+        normalize(window, meandr, MEANDR_MIN, MEANDR_MAX, "Meandr");
+
+        recalcN();
+
+        if (N <= 0) {
+            QMessageBox::critical(window, "Error", "Quantity of point is negative!");
+            qDebug() << "Error during calculating N!" << Qt::endl;
+        }
+
+        if (rate > fd) {
+            rate = fd;
+            QMessageBox::warning(window, "Warning", "Rate reduced to fd");
+            qDebug() << "Rate reduced to fd" << Qt::endl;
         }
     }
 };
